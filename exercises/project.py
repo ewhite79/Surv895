@@ -1,3 +1,5 @@
+#######IMPORTS##############################
+
 from __future__ import unicode_literals
 
 import mechanize
@@ -27,18 +29,6 @@ response = None
 phantomjs_bin_path = ""
 driver = None
 
-# declare variables - BeautifulSoup
-soup = None
-mlive_comment_div_bs = None
-article_text_bs = None
-link_list_bs = None
-link_bs = None
-
-#declare variables - for SQL
-url = ""
-author = ""
-article_text = ""
-
 # if PhantomJS, set the path to the phantomjs executable.
 
 phantomjs_bin_path = "C:/Users/Emma/phantomjs-2.0.0-windows/bin/phantomjs.exe"
@@ -50,7 +40,7 @@ phantomjs_bin_path = "C:/Users/Emma/phantomjs-2.0.0-windows/bin/phantomjs.exe"
 # set URL you want to test
 
 # MLive page with dynamically loaded comments
-test_url = "http://www.mlive.com/lansing-news/index.ssf/2014/06/michigan_senate_approves_histo.html"
+test_url = "http://www.mlive.com/lansing-news/index.ssf/2014/05/union_contribution_a_huge_step.html"
 
 # tell it what client you want to try.
 http_client = HTTP_PHANTOM_JS
@@ -88,8 +78,25 @@ elif( http_client == HTTP_PHANTOM_JS ):
     test_html = driver.page_source
 
 #-- END check to see what request loader we are using. --#
-    
-# place HTML in BeautifulSoup
+
+############FILL ARTICLE TABLE###################
+
+#load more comments
+self.selenium.open("class=fyre-stream-more")
+self.selenium.click("class=fyre-stream-more")
+self.selenium.wait_for_page_to_load("2000")
+
+# declare variables - BeautifulSoup
+soup = None
+article_text_bs = None
+article_author_bs = None
+
+#Other variables
+url = ""
+author = ""
+article_text = ""
+
+# place HTML in BeautifulSoup instance
 soup = BeautifulSoup( test_html, "html5lib" )
 
 #get article author 
@@ -123,15 +130,14 @@ try:
         VALUES (?,?,?);
     '''
         
-        
     #execute insert statement
     cursor.execute(sql_insert_article,(test_url, article_author_bs, article_text))
 
     # get ID of each record.
-    new_user_id = cursor.lastrowid
+    new_article_id = cursor.lastrowid
     
     # output result
-    print("New record inserted with ID = " + str(new_user_id))
+    print("New article inserted with ID = " + str(new_article_id))
 
     #commit
     connection.commit()
@@ -151,7 +157,113 @@ finally:
 
 #-- END try-->except-->finally around database access. --#
 
-# get div that contains comments by ID
-#mlive_comment_div_bs = test_bs.find( "div", id="rtb-comments")
-#print( "- <div id=\"rtb-comments\">: " + str( mlive_comment_div_bs ) )
-#print( test_bs )
+#################FILL COIMMENT TABLE###############################
+
+#soup variables
+comment_div_bs = None
+commenter_name_bs = None
+comment_text_bs = None
+
+#other variables
+comment_id = ""
+commenter_id = ""
+commenter_name = ""
+commenter_rating = ""
+comment_text = ""
+comment_date = ""
+comment_likes = ""
+
+
+#div where the comments are
+comment_div_bs = soup.find( "div", id="rtb-comments")
+
+#loop over comments - each is in its own "article" tag
+for article in comment_div_bs.findAll("article"):
+
+    #there is one article tag with nothing in it. skip that one
+    if article.has_attr('data-message-id'):
+
+        #comment id is in the article tag, attribute "data-message-id"
+        comment_id = article["data-message-id"]
+    
+        #commenter id is in the article tag too 
+        commenter_id = article["data-author-id"]
+
+        #commenter_name is attribute in div with class "fyre-comment-user'
+        commenter_name_bs = article.find("div", "fyre-comment-user")
+        commenter_name = commenter_name_bs["data-from"]
+
+        #commenter rating is in span with class = fyre-comment-user-rating
+        commenter_rating = article.find("span", "fyre-comment-user-rating").string
+
+        #date of comment is in a "time" tag
+        comment_date = article.find("time").string
+
+        #text of comment is in div with class "fyre-comment"
+        comment_text_bs = article.find ("div", "fyre-comment")
+        comment_text = comment_text_bs.get_text()
+
+        #comment likes are in span with class 'fyre-comment-like-count'
+        comment_likes = article.find("span", "fyre-comment-like-count").string
+
+        #try except to connect to database and put comment info into table
+        try: 
+
+            #connect to database 
+            connection = sqlite3.connect( "mlivecomments.sqlite" )
+
+            # set row_factory that returns values mapped to column names as well as list
+            connection.row_factory = sqlite3.Row
+
+            #make cursors
+            cursor = connection.cursor()
+            cursor2 = connection.cursor()
+
+            #sql insert statement
+            sql_insert_comment = '''
+                INSERT INTO comment_raw (
+                    MLIVE_comment_id,
+                    MLIVE_commenter_id,
+                    commenter_username,
+                    MLIVE_commenter_rating,
+                    comment_date,
+                    comment_text,
+                    comment_like_count,
+                    article_id
+                    )
+                VALUES (?,?,?,?,?,?,?,?);
+            '''
+            
+            #execute insert statement
+            cursor2.execute(sql_insert_comment,(comment_id, commenter_id, commenter_name,
+                commenter_rating,comment_date,comment_text, comment_likes, new_article_id))
+
+            # get ID of each record.
+            new_comment_id = cursor2.lastrowid
+    
+            # output result
+            print("New comment inserted with ID = " + str(new_comment_id))
+
+            #commit
+            connection.commit()
+
+        except Exception as e:
+    
+            print( "exception: " + str( e ) )
+    
+        finally:
+
+            # close cursor
+            cursor.close()
+            cursor2.close()
+
+            # close connection
+            connection.close()
+
+        #-- END try-->except-->finally around database access. --#
+    
+    else:
+
+        print "found tag with no comment"
+
+#END loop over comments
