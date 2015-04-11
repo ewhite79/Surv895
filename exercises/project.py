@@ -14,6 +14,8 @@ from bs4 import BeautifulSoup
 import sqlite3
 import six
 
+from time import sleep
+
 # declare variables
 test_url = ""
 http_client = ""
@@ -33,14 +35,10 @@ driver = None
 
 phantomjs_bin_path = "C:/Users/Emma/phantomjs-2.0.0-windows/bin/phantomjs.exe"
 
-# example from Windows (must be forward slashes between directories, even though it is Windows):
-#phantomjs_bin_path = "C:/Users/jonathanmorgan/AppData/Roaming/npm/node_modules/phantomjs/lib/phantom/phantomjs.exe"
-#phantomjs_bin_path = "C:/Users/jonathanmorgan/Downloads/phantomjs-2.0.0-windows/bin/phantomjs.exe"
-
 # set URL you want to test
 
 # MLive page with dynamically loaded comments
-test_url = "http://www.mlive.com/lansing-news/index.ssf/2014/05/union_contribution_a_huge_step.html"
+test_url = "http://www.mlive.com/lansing-news/index.ssf/2014/06/snyder_hails_historic_day_for.htm"
 
 # tell it what client you want to try.
 http_client = HTTP_PHANTOM_JS
@@ -62,8 +60,7 @@ elif( http_client == HTTP_PHANTOM_JS ):
     
     # retrieve with Phantom JS via selenium
     # get PhantomJS Selenium Driver
-    driver = webdriver.PhantomJS( phantomjs_bin_path ) # or add to your PATH
-    #driver = webdriver.PhantomJS() # or add to your PATH
+    driver = webdriver.PhantomJS( phantomjs_bin_path ) 
 
     # set up virtual window
     driver.set_window_size(1024, 768) # optional
@@ -71,7 +68,29 @@ elif( http_client == HTTP_PHANTOM_JS ):
     # grab page.
     driver.get( test_url )
 
-    # save screenshot.
+    try: 
+
+        #def[@ine xpath to div 
+        xpath_to_button_div = '//div[@class="fyre-stream-more-container"]'
+
+        #retrieve the divv
+        button_div = driver.find_element_by_xpath (xpath_to_button_div)
+
+        print "found the button"
+
+        #clik on the div 
+        button_div.click()
+
+        #wait for comments to load
+        sleep(30)
+
+    except Exception:
+
+        pass
+
+        print "fewer than 50 comments" 
+
+    # save screnshot.
     driver.save_screenshot('screen.png') # save a screenshot to disk
 
     # get HTML source
@@ -80,11 +99,6 @@ elif( http_client == HTTP_PHANTOM_JS ):
 #-- END check to see what request loader we are using. --#
 
 ############FILL ARTICLE TABLE###################
-
-#load more comments
-self.selenium.open("class=fyre-stream-more")
-self.selenium.click("class=fyre-stream-more")
-self.selenium.wait_for_page_to_load("2000")
 
 # declare variables - BeautifulSoup
 soup = None
@@ -183,87 +197,97 @@ for article in comment_div_bs.findAll("article"):
     #there is one article tag with nothing in it. skip that one
     if article.has_attr('data-message-id'):
 
-        #comment id is in the article tag, attribute "data-message-id"
-        comment_id = article["data-message-id"]
-    
-        #commenter id is in the article tag too 
-        commenter_id = article["data-author-id"]
+        #try except to get around deleted comments 
 
-        #commenter_name is attribute in div with class "fyre-comment-user'
-        commenter_name_bs = article.find("div", "fyre-comment-user")
-        commenter_name = commenter_name_bs["data-from"]
-
-        #commenter rating is in span with class = fyre-comment-user-rating
-        commenter_rating = article.find("span", "fyre-comment-user-rating").string
-
-        #date of comment is in a "time" tag
-        comment_date = article.find("time").string
-
-        #text of comment is in div with class "fyre-comment"
-        comment_text_bs = article.find ("div", "fyre-comment")
-        comment_text = comment_text_bs.get_text()
-
-        #comment likes are in span with class 'fyre-comment-like-count'
-        comment_likes = article.find("span", "fyre-comment-like-count").string
-
-        #try except to connect to database and put comment info into table
         try: 
+            #comment id is in the article tag, attribute "data-message-id"
+            comment_id = article["data-message-id"]
+    
+            #commenter id is in the article tag too 
+            commenter_id = article["data-author-id"]
 
-            #connect to database 
-            connection = sqlite3.connect( "mlivecomments.sqlite" )
+            #commenter_name is attribute in div with class "fyre-comment-user'
+            commenter_name_bs = article.find("div", "fyre-comment-user")
+            commenter_name = commenter_name_bs["data-from"]
 
-            # set row_factory that returns values mapped to column names as well as list
-            connection.row_factory = sqlite3.Row
+            #commenter rating is in span with class = fyre-comment-user-rating
+            commenter_rating = article.find("span", "fyre-comment-user-rating").string
 
-            #make cursors
-            cursor = connection.cursor()
-            cursor2 = connection.cursor()
+            #date of comment is in a "time" tag
+            comment_date = article.find("time").string
 
-            #sql insert statement
-            sql_insert_comment = '''
-                INSERT INTO comment_raw (
-                    MLIVE_comment_id,
-                    MLIVE_commenter_id,
-                    commenter_username,
-                    MLIVE_commenter_rating,
-                    comment_date,
-                    comment_text,
-                    comment_like_count,
-                    article_id
-                    )
-                VALUES (?,?,?,?,?,?,?,?);
-            '''
+            #text of comment is in div with class "fyre-comment"
+            comment_text_bs = article.find ("div", "fyre-comment")
+            comment_text = comment_text_bs.get_text()
+
+            #comment likes are in span with class 'fyre-comment-like-count'
+            comment_likes = article.find("span", "fyre-comment-like-count").string
+
+            #try except to connect to database and put comment info into table
+            try: 
+
+                #connect to database 
+                connection = sqlite3.connect( "mlivecomments.sqlite" )
+
+                # set row_factory that returns values mapped to column names as well as list
+                connection.row_factory = sqlite3.Row
+
+                #make cursors
+                cursor = connection.cursor()
+                cursor2 = connection.cursor()
+
+                #sql insert statement
+                sql_insert_comment = '''
+                        INSERT INTO comment_raw (
+                        MLIVE_comment_id,
+                        MLIVE_commenter_id,
+                        commenter_username,
+                        MLIVE_commenter_rating,
+                        comment_date,
+                        comment_text,
+                        comment_like_count,
+                        article_id
+                        )
+                    VALUES (?,?,?,?,?,?,?,?);
+                '''
             
-            #execute insert statement
-            cursor2.execute(sql_insert_comment,(comment_id, commenter_id, commenter_name,
-                commenter_rating,comment_date,comment_text, comment_likes, new_article_id))
+                #execute insert statement
+                cursor2.execute(sql_insert_comment,(comment_id, commenter_id, commenter_name,
+                    commenter_rating,comment_date,comment_text, comment_likes, new_article_id))
 
-            # get ID of each record.
-            new_comment_id = cursor2.lastrowid
+                # get ID of each record.
+                new_comment_id = cursor2.lastrowid
     
-            # output result
-            print("New comment inserted with ID = " + str(new_comment_id))
+                # output result
+                print("New comment inserted with ID = " + str(new_comment_id))
 
-            #commit
-            connection.commit()
+                #commit
+                connection.commit()
 
-        except Exception as e:
+            except Exception as e:
     
-            print( "exception: " + str( e ) )
+                print( "exception: " + str( e ) )
     
-        finally:
+            finally:
 
-            # close cursor
-            cursor.close()
-            cursor2.close()
+                # close cursor
+                cursor.close()
+                cursor2.close()
 
-            # close connection
-            connection.close()
+                # close connection
+                connection.close()
 
-        #-- END try-->except-->finally around database access. --#
-    
+            #-- END try-->except-->finally around database access. --#
+        except TypeError: 
+
+            print "found deleted comment"
+
+        #end check for deleted comments
+
     else:
 
         print "found tag with no comment"
+    
+    #END check for comment in tag
 
 #END loop over comments
